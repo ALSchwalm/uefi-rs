@@ -12,7 +12,7 @@
 //! * maintaining MP-related processor status
 
 use crate::proto::Protocol;
-use crate::{unsafe_guid, Result, Status};
+use crate::{unsafe_guid, Event, Result, Status};
 use bitflags::bitflags;
 use core::convert::TryInto;
 use core::ffi::c_void;
@@ -108,7 +108,7 @@ pub struct MPServices {
         this: *const MPServices,
         procedure: Procedure,
         single_thread: bool,
-        wait_event: *mut c_void,
+        wait_event: *mut Event,
         timeout_in_micro_seconds: usize,
         procedure_argument: *mut c_void,
         failed_cpu_list: *mut *mut usize,
@@ -117,7 +117,7 @@ pub struct MPServices {
         this: *const MPServices,
         procedure: Procedure,
         processor_number: usize,
-        wait_event: *mut c_void,
+        wait_event: *mut Event,
         timeout_in_micro_seconds: usize,
         procedure_argument: *mut c_void,
         finished: *mut bool,
@@ -151,13 +151,14 @@ impl MPServices {
         (self.get_processor_info)(self, processor_number, &mut pi).into_with_val(|| pi)
     }
 
-    /// Executes provided function on all APs in blocking mode.
+    /// Executes provided function on all APs.
     pub fn startup_all_aps(
         &self,
         single_thread: bool,
         procedure: Procedure,
         procedure_argument: *mut c_void,
         timeout: Option<Duration>,
+        mut wait_event: Option<Event>
     ) -> Result {
         let timeout_arg = match timeout {
             Some(timeout) => timeout.as_micros().try_into().unwrap(),
@@ -168,7 +169,9 @@ impl MPServices {
             self,
             procedure,
             single_thread,
-            ptr::null_mut(),
+            wait_event.as_mut()
+                .map(|event| event as *mut Event)
+                .unwrap_or(ptr::null_mut()),
             timeout_arg,
             procedure_argument,
             ptr::null_mut(),
@@ -176,13 +179,14 @@ impl MPServices {
         .into()
     }
 
-    /// Executes provided function on a specific AP in blocking mode.
+    /// Executes provided function on a specific AP.
     pub fn startup_this_ap(
         &self,
         processor_number: usize,
         procedure: Procedure,
         procedure_argument: *mut c_void,
         timeout: Option<Duration>,
+        mut wait_event: Option<Event>
     ) -> Result {
         let timeout_arg = match timeout {
             Some(timeout) => timeout.as_micros().try_into().unwrap(),
@@ -193,7 +197,9 @@ impl MPServices {
             self,
             procedure,
             processor_number,
-            ptr::null_mut(),
+            wait_event.as_mut()
+                .map(|event| event as *mut Event)
+                .unwrap_or(ptr::null_mut()),
             timeout_arg,
             procedure_argument,
             ptr::null_mut(),
